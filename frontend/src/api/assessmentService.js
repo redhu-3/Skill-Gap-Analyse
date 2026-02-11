@@ -13,7 +13,7 @@ export const startAssessment = (assessmentId) => {
  */
 export const submitAssessment = (assessmentId, answers) => {
   return axios.post(
-    `/assessments/submit/${assessmentId}`,
+    `/assessments/submit/assessment/${assessmentId}`,
     { answers }
   );
 };

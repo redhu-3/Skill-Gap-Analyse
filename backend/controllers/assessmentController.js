@@ -5,7 +5,8 @@ const Assessment = require("../models/Assessment");
 const UserAssessment = require("../models/UserAssessment");
 const AssessmentRule = require("../models/AssessmentRule");
 const mongoose = require("mongoose");
-
+const axios=require("axios");
+const UserQuestionAttempt = require("../models/UserQuestionAttempt");
 // User attempts a skill assessment
 // exports.attemptAssessment = async (req, res) => {
 //   try {
@@ -230,6 +231,49 @@ exports.submitSkillAssessment = async (req, res) => {
 
 
 // GET: Fetch questions for an assessment (user)
+// exports.getAssessmentQuestions = async (req, res) => {
+//   try {
+//     const { assessmentId } = req.params;
+
+//     if (!mongoose.Types.ObjectId.isValid(assessmentId)) {
+//       return res.status(400).json({ message: "Invalid assessment ID" });
+//     }
+
+//     const assessment = await Assessment.findById(assessmentId);
+//     if (!assessment) {
+//       return res.status(404).json({ message: "Assessment not found or inactive" });
+//     }
+
+//     // Fetch random questions according to assessment.randomPick
+//     const questions = await Question.aggregate([
+//       { $match: { assessment: new mongoose.Types.ObjectId(assessmentId), status: "active" } },
+//       { $sample: { size: assessment.randomPick } }
+//     ]);
+
+//     if (!questions.length) {
+//       return res.status(404).json({ message: "No questions found for this assessment" });
+//     }
+
+//     res.status(200).json({
+//       assessment: {
+//         id: assessment._id,
+//         name: assessment.name,
+//         level: assessment.level,
+//         timer: assessment.timer, // fixed
+//       },
+//       questions,
+//     });
+//   } catch (error) {
+//     console.error(error);
+//     res.status(500).json({
+//       message: "Error fetching assessment questions",
+//       error: error.message,
+//     });
+//   }
+// };
+
+
+
 exports.getAssessmentQuestions = async (req, res) => {
   try {
     const { assessmentId } = req.params;
@@ -253,17 +297,29 @@ exports.getAssessmentQuestions = async (req, res) => {
       return res.status(404).json({ message: "No questions found for this assessment" });
     }
 
+    // Remove hidden test cases from coding questions
+    const formattedQuestions = questions.map(q => {
+      if (q.type === "coding" && q.testCases?.length) {
+        return {
+          ...q,
+          testCases: q.testCases.filter(tc => !tc.isHidden), // only public
+        };
+      }
+      return q;
+    });
+
     res.status(200).json({
       assessment: {
         id: assessment._id,
         name: assessment.name,
         level: assessment.level,
-        timer: assessment.timer, // fixed
+        timer: assessment.timer,
       },
-      questions,
+      questions: formattedQuestions,
     });
+
   } catch (error) {
-    console.error(error);
+    console.error("Get Assessment Questions Error:", error);
     res.status(500).json({
       message: "Error fetching assessment questions",
       error: error.message,
@@ -272,13 +328,23 @@ exports.getAssessmentQuestions = async (req, res) => {
 };
 
 
+// controllers/assessmentController.js
 
-// // User submits answers for an assessment
+
+
 exports.submitAssessment = async (req, res) => {
   try {
     const userId = req.user.id;
     const { assessmentId } = req.params;
     const { answers } = req.body;
+
+    if (!Array.isArray(answers) || answers.length === 0) {
+      return res.status(400).json({ message: "Answers are required" });
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(assessmentId)) {
+      return res.status(400).json({ message: "Invalid assessment ID" });
+    }
 
     const assessment = await Assessment.findById(assessmentId);
     if (!assessment) {
@@ -292,12 +358,11 @@ exports.submitAssessment = async (req, res) => {
       skill: skillId,
     });
 
-    if (!userSkill || userSkill.status !== "in-progress") {
+    if (!userSkill) {
       return res.status(403).json({ message: "Skill not in progress" });
     }
 
-    // ✅ FIXED PART
-    const questionIds = answers.map(a => a.questionId);
+    const questionIds = answers.map((a) => a.questionId);
 
     const questions = await Question.find({
       _id: { $in: questionIds },
@@ -305,19 +370,83 @@ exports.submitAssessment = async (req, res) => {
       status: "active",
     });
 
-    let correct = 0;
-    questions.forEach(q => {
-      const userAns = answers.find(a => a.questionId === q._id.toString());
-      if (q.correctAnswer === userAns?.answer) correct++;
-    });
+    if (questions.length !== answers.length) {
+      return res.status(400).json({
+        message: "Some questions are invalid",
+      });
+    }
 
-    const score = (correct / questions.length) * 100;
+    let correctCount = 0;
+
+    // =========================
+    // ✅ EVALUATE QUESTIONS
+    // =========================
+
+    for (const question of questions) {
+      const userAnswer = answers.find(
+        (a) => a.questionId === question._id.toString()
+      );
+
+      if (!userAnswer) continue;
+
+      // -----------------------
+      // 🧠 CODING QUESTION
+      // -----------------------
+      if (question.type === "coding") {
+
+        const attempt = await UserQuestionAttempt.findOne({
+          user: userId,
+          question: question._id,
+          assessment: assessmentId,
+        });
+
+        if (attempt && attempt.isCorrect) {
+          correctCount++;
+        }
+
+      }
+      // -----------------------
+      // 📝 MCQ / FILL
+      // -----------------------
+      else {
+
+        const isCorrect =
+          String(question.correctAnswer).trim() ===
+          String(userAnswer.answer).trim();
+
+        // Store attempt
+        await UserQuestionAttempt.findOneAndUpdate(
+          {
+            user: userId,
+            question: question._id,
+            assessment: assessmentId,
+          },
+          {
+            answer: userAnswer.answer,
+            isCorrect,
+          },
+          { upsert: true }
+        );
+
+        if (isCorrect) {
+          correctCount++;
+        }
+      }
+    }
+
+    // =========================
+    // 🎯 CALCULATE SCORE
+    // =========================
+
+    const totalQuestions = questions.length;
+    const score = (correctCount / totalQuestions) * 100;
     const passed = score >= assessment.minPassingPercentage;
 
-    const attemptCount = await UserAssessment.countDocuments({
-      user: userId,
-      assessment: assessmentId,
-    });
+    const attemptNumber =
+      (await UserAssessment.countDocuments({
+        user: userId,
+        assessment: assessmentId,
+      })) + 1;
 
     await UserAssessment.create({
       user: userId,
@@ -326,33 +455,51 @@ exports.submitAssessment = async (req, res) => {
       level: assessment.level,
       score,
       passed,
-      attemptNumber: attemptCount + 1,
+      attemptNumber,
     });
 
+    // =========================
+    // 🚀 UPDATE SKILL PROGRESS
+    // =========================
+
     if (passed) {
-      userSkill.completedAssessmentLevels.push(assessment.level);
-      userSkill.currentAssessmentLevel += 1;
+      if (!userSkill.completedAssessmentLevels.includes(assessment.level)) {
+        userSkill.completedAssessmentLevels.push(assessment.level);
+      }
+
+      userSkill.currentAssessmentLevel = assessment.level + 1;
 
       const totalLevels = await Assessment.countDocuments({
         skill: skillId,
-        status: "published",
       });
 
-      if (userSkill.completedAssessmentLevels.length === totalLevels) {
+      if (
+        userSkill.completedAssessmentLevels.length === totalLevels
+      ) {
         userSkill.status = "completed";
       }
 
       await userSkill.save();
     }
 
-    res.json({
+    // =========================
+    // ✅ RESPONSE
+    // =========================
+
+    return res.json({
       score,
       passed,
+      correctAnswers: correctCount,
+      totalQuestions,
       currentAssessmentLevel: userSkill.currentAssessmentLevel,
       skillStatus: userSkill.status,
     });
 
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error("Submit Assessment Error:", error);
+    return res.status(500).json({
+      message: "Error submitting assessment",
+      error: error.message,
+    });
   }
 };

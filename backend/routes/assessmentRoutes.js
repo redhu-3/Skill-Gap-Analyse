@@ -14,7 +14,7 @@ router.get("/skill/:skillId", protect, verifyRole("user"), getSkillQuestions);
 //router.get("/attempt/:skill", protect, verifyRole("user"), attemptSkill);
 
 // POST: Submit answers
-router.post("/submit/:skill", protect, verifyRole("user"), submitSkillAssessment);
+//router.post("/submit/:skill", protect, verifyRole("user"), submitSkillAssessment);
 
 // Fetch questions by assessment
 router.get(
