@@ -1,6 +1,6 @@
 const express = require("express");
 const router = express.Router();
-const { getSkillQuestions,submitSkillAssessment,getAssessmentQuestions,submitAssessment} = require("../controllers/assessmentController");
+const { getSkillQuestions,submitSkillAssessment,getAssessmentQuestions,submitAssessment,getAssessmentAttempts} = require("../controllers/assessmentController");
 const { protect, verifyRole } = require("../middleware/authMiddleware");
 
 // User attempts assessment for a skill
@@ -11,7 +11,7 @@ router.get("/skill/:skillId", protect, verifyRole("user"), getSkillQuestions);
 
 
 // GET: Fetch random questions
-//router.get("/attempt/:skill", protect, verifyRole("user"), attemptSkill);
+router.get("/attempts/:assessmentId", protect, verifyRole("user"), getAssessmentAttempts);
 
 // POST: Submit answers
 //router.post("/submit/:skill", protect, verifyRole("user"), submitSkillAssessment);

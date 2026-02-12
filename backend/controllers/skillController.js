@@ -367,6 +367,61 @@ exports.getCurrentSkill = async (req, res) => {
 
 
 
+// exports.getSkillDetails = async (req, res) => {
+//   try {
+//     const userId = req.user.id;
+//     const { skillId } = req.params;
+
+//     // 1️⃣ Check if user has started this skill
+//     const userSkill = await UserSkill.findOne({
+//       user: userId,
+//       skill: skillId,
+//     }).populate("skill");
+
+//     if (!userSkill) {
+//       return res.status(404).json({ message: "Skill not started" });
+//     }
+
+//     // 2️⃣ Get all assessments for this skill (NO status filter as you requested)
+//     const assessments = await Assessment.find({
+//       skill: skillId,
+//     }).sort({ level: 1 });
+
+//     // 3️⃣ Attach questions to each assessment
+//     const assessmentsWithQuestions = await Promise.all(
+//       assessments.map(async (assessment) => {
+//         const questions = await Question.find({
+//           assessment: assessment._id,
+//           status: "active", // only active questions
+//         });
+
+//         return {
+//           ...assessment.toObject(),
+//           questions,
+//         };
+//       })
+//     );
+
+//     // 4️⃣ Send response
+//     res.status(200).json({
+//       skill: {
+//         name: userSkill.skill.name,
+//         description: userSkill.skill.description || "No description",
+//         status: userSkill.status,
+//       },
+//       progress: {
+//         currentAssessmentLevel: userSkill.currentAssessmentLevel,
+//         completedAssessmentLevels: userSkill.completedAssessmentLevels,
+//       },
+//       assessments: assessmentsWithQuestions,
+//     });
+//   } catch (error) {
+//     console.error("getSkillDetails error:", error);
+//     res.status(500).json({ message: error.message });
+//   }
+// };
+
+
 exports.getSkillDetails = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -382,22 +437,32 @@ exports.getSkillDetails = async (req, res) => {
       return res.status(404).json({ message: "Skill not started" });
     }
 
-    // 2️⃣ Get all assessments for this skill (NO status filter as you requested)
+    // 2️⃣ Get all assessments for this skill
     const assessments = await Assessment.find({
       skill: skillId,
     }).sort({ level: 1 });
 
-    // 3️⃣ Attach questions to each assessment
-    const assessmentsWithQuestions = await Promise.all(
+    // 3️⃣ Attach completion + lock status + questions
+    const assessmentsWithStatus = await Promise.all(
       assessments.map(async (assessment) => {
         const questions = await Question.find({
           assessment: assessment._id,
-          status: "active", // only active questions
+          status: "active",
         });
+
+        // ✅ Check if completed
+        const isCompleted =
+          userSkill.completedAssessmentLevels.includes(assessment.level);
+
+        // ✅ Lock logic (only allow next level)
+        const isLocked =
+          assessment.level > userSkill.currentAssessmentLevel;
 
         return {
           ...assessment.toObject(),
           questions,
+          isCompleted,
+          isLocked,
         };
       })
     );
@@ -413,129 +478,13 @@ exports.getSkillDetails = async (req, res) => {
         currentAssessmentLevel: userSkill.currentAssessmentLevel,
         completedAssessmentLevels: userSkill.completedAssessmentLevels,
       },
-      assessments: assessmentsWithQuestions,
+      assessments: assessmentsWithStatus,
     });
   } catch (error) {
     console.error("getSkillDetails error:", error);
     res.status(500).json({ message: error.message });
   }
 };
-
-
-// exports.getSkillDetails = async (req, res) => {
-//   try {
-//     const userId = req.user.id;
-//     const { skillId } = req.params;
-
-//     const userSkill = await UserSkill.findOne({
-//       user: userId,
-//       skill: skillId,
-//     }).populate("skill");
-
-//     if (!userSkill) {
-//       return res.status(404).json({ message: "Skill not started" });
-//     }
-
-//     const assessments = await Assessment.find({
-//       skill: skillId,
-    
-//     }).sort({ level: 1 });
-
-//     res.json({
-//       skill: {
-//         name: userSkill.skill.name,
-//         description: userSkill.skill.description,
-//         status: userSkill.status,
-//       },
-//       progress: {
-//         currentAssessmentLevel: userSkill.currentAssessmentLevel,
-//         completedAssessmentLevels: userSkill.completedAssessmentLevels,
-//       },
-//       assessments,
-//     });
-
-//   } catch (error) {
-//     res.status(500).json({ message: error.message });
-//   }
-// };
-
-// exports.startLearning = async (req, res) => {
-//   try {
-//     console.log("REQ.USER:", req.user);
-//     console.log("PARAMS:", req.params);
-
-//     const userId = req.user._id || req.user.id;
-//     const { jobRoleId } = req.params;
-
-//     // 1️⃣ Check if a skill is already in progress
-//     const inProgress = await UserSkill.findOne({
-//       user: userId,
-//       jobRole: jobRoleId,
-//       status: "in-progress",
-//     });
-
-//     if (inProgress) {
-//       return res.json({ skillId: inProgress.skill });
-//     }
-
-//     // 2️⃣ Fetch all skills for this job role
-//     const skills = await Skill.find({ jobRole: jobRoleId })
-//       .populate("prerequisites")
-//       .sort({ createdAt: 1 });
-
-//     if (!skills || skills.length === 0) {
-//       return res.status(404).json({ message: "No skills found for this job role" });
-//     }
-
-//     const userSkills = await UserSkill.find({ user: userId, jobRole: jobRoleId });
-
-//     const completedSkillIds = userSkills
-//       .filter(us => us.status === "completed")
-//       .map(us => us.skill.toString());
-
-//     // 3️⃣ Find the first unlocked skill
-//     for (const skill of skills) {
-//       const prereqsCompleted = skill.prerequisites.every(pr =>
-//         completedSkillIds.includes(pr._id.toString())
-//       );
-
-//       if (prereqsCompleted) {
-//         const existing = await UserSkill.findOne({
-//           user: userId,
-//           skill: skill._id,
-//         });
-
-//         if (!existing) {
-//           // ✅ Provide defaults to avoid schema errors
-//           const newUserSkill = await UserSkill.create({
-//             user: userId,
-//             jobRole: jobRoleId,
-//             skill: skill._id,
-//             status: "in-progress",
-//             currentAssessmentLevel: 1,        // default starting level
-//             completedAssessmentLevels: [],    // empty array
-//           });
-
-//           return res.json({ skillId: newUserSkill.skill });
-//         } else {
-//           // If exists but not in-progress, update status safely
-//           existing.status = "in-progress";
-//           existing.currentAssessmentLevel = existing.currentAssessmentLevel || 1;
-//           existing.completedAssessmentLevels = existing.completedAssessmentLevels || [];
-//           await existing.save();
-//           return res.json({ skillId: existing.skill });
-//         }
-//       }
-//     }
-
-//     // 4️⃣ No unlocked skills
-//     return res.status(403).json({ message: "No skills unlocked yet" });
-
-//   } catch (error) {
-//     console.error("startLearning error:", error);
-//     res.status(500).json({ message: error.message });
-//   }
-// };
 
 exports.startLearning = async (req, res) => {
   try {

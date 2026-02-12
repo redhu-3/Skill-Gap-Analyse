@@ -7,68 +7,40 @@ const AssessmentRule = require("../models/AssessmentRule");
 const mongoose = require("mongoose");
 const axios=require("axios");
 const UserQuestionAttempt = require("../models/UserQuestionAttempt");
-// User attempts a skill assessment
-// exports.attemptAssessment = async (req, res) => {
-//   try {
-//     const { skill: skillId, answers } = req.body;
-//     const userId = req.user.id;
 
-//     if (!skillId || !answers || !Array.isArray(answers) || answers.length === 0) {
-//       return res.status(400).json({ message: "Skill and answers are required" });
-//     }
+exports.getAssessmentAttempts = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { assessmentId } = req.params;
 
-//     // 1️⃣ Fetch skill and required proficiency
-//     const skill = await Skill.findById(skillId);
-//     if (!skill) {
-//       return res.status(404).json({ message: "Skill not found" });
-//     }
+    if (!mongoose.Types.ObjectId.isValid(assessmentId)) {
+      return res.status(400).json({ message: "Invalid assessment ID" });
+    }
 
-//     // 2️⃣ Fetch questions answered by user
-//     const questionIds = answers.map(a => a.questionId);
-//     const questions = await Question.find({ _id: { $in: questionIds } });
+    const attempts = await UserAssessment.find({
+      user: userId,
+      assessment: assessmentId,
+    })
+      .sort({ createdAt: -1 });
 
-//     if (questions.length !== answers.length) {
-//       return res.status(400).json({ message: "Some questions are invalid" });
-//     }
+    const assessment = await Assessment.findById(assessmentId);
 
-//     // 3️⃣ Calculate score
-//     let correctCount = 0;
-//     answers.forEach(answer => {
-//       const question = questions.find(q => q._id.toString() === answer.questionId);
-//       if (question && question.correctAnswer === answer.answer) {
-//         correctCount++;
-//       }
-//     });
+    const maxAttempts = assessment.maxAttempts || 3;
 
-//     const score = (correctCount / questions.length) * 100;
-//     const passed = score >= skill.requiredProficiency;
+    return res.json({
+      totalAttempts: attempts.length,
+      maxAttempts,
+      attemptsLeft: maxAttempts - attempts.length,
+      attempts,
+    });
 
-//     // 4️⃣ Update UserSkill
-//     let userSkill = await UserSkill.findOne({ user: userId, skill: skillId });
-//     if (!userSkill) {
-//       userSkill = new UserSkill({ user: userId, skill: skillId });
-//     }
-
-//     userSkill.score = score;
-//     userSkill.status = passed ? "completed" : "in-progress";
-//     userSkill.attempts = (userSkill.attempts || 0) + 1;
-
-//     await userSkill.save();
-
-//     // 5️⃣ Return result
-//     res.status(200).json({
-//       message: "Assessment submitted",
-//       skill: skill.name,
-//       score,
-//       passed,
-//       attempts: userSkill.attempts,
-//       status: userSkill.status,
-//     });
-//   } catch (error) {
-//     console.error(error);
-//     res.status(500).json({ message: "Error submitting assessment", error: error.message });
-//   }
-// };
+  } catch (error) {
+    console.error("Get Attempts Error:", error);
+    return res.status(500).json({
+      message: "Error fetching attempts",
+    });
+  }
+};
 
 // Get random questions for a skill
 exports.getSkillQuestions = async (req, res) => {
@@ -99,23 +71,28 @@ exports.getSkillQuestions = async (req, res) => {
 
 
 
-// GET: Fetch random questions for a skill
-// exports.attemptSkill = async (req, res) => {
+
+// POST: Submit answers for a skill assessment
+// exports.submitSkillAssessment = async (req, res) => {
 //   try {
-//     const { skill: skillId } = req.params; // skill ID
+//     const { skill: skillId } = req.params;
+//     const { answers } = req.body;
 //     const userId = req.user.id;
 
 //     if (!mongoose.Types.ObjectId.isValid(skillId)) {
 //       return res.status(400).json({ message: "Invalid skill ID" });
 //     }
 
-//     // Fetch the assessment rule for this skill
-//     const rule = await AssessmentRule.findOne({ assessment: { $in: await Assessment.find({ skill: skillId }).distinct("_id") } });
-//     if (!rule) {
-//       return res.status(400).json({ message: "Assessment rule not configured for this skill" });
+//     if (!Array.isArray(answers) || answers.length === 0) {
+//       return res.status(400).json({ message: "Answers are required" });
 //     }
 
-//     // Fetch user's current attempts for this skill
+//     // Fetch assessment rule for this skill
+//     const assessmentIds = await Assessment.find({ skill: skillId }).distinct("_id");
+//     const rule = await AssessmentRule.findOne({ assessment: { $in: assessmentIds } });
+//     if (!rule) return res.status(400).json({ message: "Assessment rule not set for this skill" });
+
+//     // Fetch user's skill record
 //     let userSkill = await UserSkill.findOne({ user: userId, skill: skillId });
 //     if (!userSkill) userSkill = new UserSkill({ user: userId, skill: skillId });
 
@@ -124,109 +101,55 @@ exports.getSkillQuestions = async (req, res) => {
 //       return res.status(403).json({ message: "Maximum attempts reached for this skill" });
 //     }
 
-//     // Fetch questions randomly according to the rule
-//     const questions = await Question.aggregate([
-//       { $match: { skill: new mongoose.Types.ObjectId(skillId), status: "active" } },
-//       { $sample: { size: rule.numQuestions } },
-//     ]);
+//     // Fetch questions answered
+//     const questionIds = answers.map(a => a.questionId);
+//     const questions = await Question.find({ _id: { $in: questionIds }, skill: skillId, status: "active" });
 
 //     if (!questions.length) {
-//       return res.status(404).json({ message: "No questions available for this skill" });
+//       return res.status(400).json({ message: "No valid questions found for this skill" });
+//     }
+
+//     // Calculate score
+//     let correctCount = 0;
+//     for (let q of questions) {
+//       const userAnswer = answers.find(a => a.questionId === q._id.toString())?.answer;
+//       if (q.type === "mcq" && userAnswer === q.correctAnswer) correctCount++;
+//     }
+
+//     const scorePercentage = (correctCount / questions.length) * 100;
+
+//     // Update UserSkill
+//     userSkill.attempts += 1;
+//     userSkill.score = scorePercentage;
+//     userSkill.lastAttemptAt = new Date();
+//     userSkill.status = scorePercentage >= rule.minPassingPercentage ? "completed" : "in-progress";
+
+//     await userSkill.save();
+
+//     // Unlock dependent skills
+//     if (userSkill.status === "completed") {
+//       const nextSkills = await Skill.find({ prerequisites: skillId });
+//       for (let next of nextSkills) {
+//         const exists = await UserSkill.findOne({ user: userId, skill: next._id });
+//         if (!exists) {
+//           await UserSkill.create({ user: userId, skill: next._id, status: "in-progress" });
+//         }
+//       }
 //     }
 
 //     res.status(200).json({
-//       questions,
+//       message: "Skill assessment submitted successfully",
+//       score: scorePercentage,
+//       status: userSkill.status,
 //       attemptsLeft: rule.maxAttempts - userSkill.attempts,
-//       rule,
+//       lastAttemptAt: userSkill.lastAttemptAt,
 //     });
 
 //   } catch (error) {
 //     console.error(error);
-//     res.status(500).json({ message: "Error fetching skill questions", error: error.message });
+//     res.status(500).json({ message: "Error submitting skill assessment", error: error.message });
 //   }
 // };
-
-
-
-
-// POST: Submit answers for a skill assessment
-exports.submitSkillAssessment = async (req, res) => {
-  try {
-    const { skill: skillId } = req.params;
-    const { answers } = req.body;
-    const userId = req.user.id;
-
-    if (!mongoose.Types.ObjectId.isValid(skillId)) {
-      return res.status(400).json({ message: "Invalid skill ID" });
-    }
-
-    if (!Array.isArray(answers) || answers.length === 0) {
-      return res.status(400).json({ message: "Answers are required" });
-    }
-
-    // Fetch assessment rule for this skill
-    const assessmentIds = await Assessment.find({ skill: skillId }).distinct("_id");
-    const rule = await AssessmentRule.findOne({ assessment: { $in: assessmentIds } });
-    if (!rule) return res.status(400).json({ message: "Assessment rule not set for this skill" });
-
-    // Fetch user's skill record
-    let userSkill = await UserSkill.findOne({ user: userId, skill: skillId });
-    if (!userSkill) userSkill = new UserSkill({ user: userId, skill: skillId });
-
-    // Check max attempts
-    if (userSkill.attempts >= rule.maxAttempts) {
-      return res.status(403).json({ message: "Maximum attempts reached for this skill" });
-    }
-
-    // Fetch questions answered
-    const questionIds = answers.map(a => a.questionId);
-    const questions = await Question.find({ _id: { $in: questionIds }, skill: skillId, status: "active" });
-
-    if (!questions.length) {
-      return res.status(400).json({ message: "No valid questions found for this skill" });
-    }
-
-    // Calculate score
-    let correctCount = 0;
-    for (let q of questions) {
-      const userAnswer = answers.find(a => a.questionId === q._id.toString())?.answer;
-      if (q.type === "mcq" && userAnswer === q.correctAnswer) correctCount++;
-    }
-
-    const scorePercentage = (correctCount / questions.length) * 100;
-
-    // Update UserSkill
-    userSkill.attempts += 1;
-    userSkill.score = scorePercentage;
-    userSkill.lastAttemptAt = new Date();
-    userSkill.status = scorePercentage >= rule.minPassingPercentage ? "completed" : "in-progress";
-
-    await userSkill.save();
-
-    // Unlock dependent skills
-    if (userSkill.status === "completed") {
-      const nextSkills = await Skill.find({ prerequisites: skillId });
-      for (let next of nextSkills) {
-        const exists = await UserSkill.findOne({ user: userId, skill: next._id });
-        if (!exists) {
-          await UserSkill.create({ user: userId, skill: next._id, status: "in-progress" });
-        }
-      }
-    }
-
-    res.status(200).json({
-      message: "Skill assessment submitted successfully",
-      score: scorePercentage,
-      status: userSkill.status,
-      attemptsLeft: rule.maxAttempts - userSkill.attempts,
-      lastAttemptAt: userSkill.lastAttemptAt,
-    });
-
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: "Error submitting skill assessment", error: error.message });
-  }
-};
 
 
 
@@ -336,7 +259,7 @@ exports.submitAssessment = async (req, res) => {
   try {
     const userId = req.user.id;
     const { assessmentId } = req.params;
-    const { answers } = req.body;
+    const { answers ,timeTaken} = req.body;
 
     if (!Array.isArray(answers) || answers.length === 0) {
       return res.status(400).json({ message: "Answers are required" });
@@ -350,6 +273,7 @@ exports.submitAssessment = async (req, res) => {
     if (!assessment) {
       return res.status(404).json({ message: "Assessment not found" });
     }
+    
 
     const skillId = assessment.skill;
 
@@ -456,6 +380,8 @@ exports.submitAssessment = async (req, res) => {
       score,
       passed,
       attemptNumber,
+       timeTaken: timeTaken || 0,  
+
     });
 
     // =========================
@@ -493,6 +419,7 @@ exports.submitAssessment = async (req, res) => {
       totalQuestions,
       currentAssessmentLevel: userSkill.currentAssessmentLevel,
       skillStatus: userSkill.status,
+        skillId: skillId,  
     });
 
   } catch (error) {

@@ -68,12 +68,14 @@ app.use("/api/admin/assessments",assessmentAdminRoutes);
 app.use("/api/enrollment", enrollmentRoutes);
 app.use("/api/admin/assessment-rules", assessmentRuleRoutes);
 const chatRoutes = require("./routes/chatRoutes");
+
 app.use(chatRoutes);
 
 // ---------------- TEST ----------------
 app.get("/", (req, res) => {
   res.send("Skill Gap Analysis Backend is running");
 });
+
 
 // ---------------- DB ----------------
 mongoose
