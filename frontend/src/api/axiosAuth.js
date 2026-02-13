@@ -2,7 +2,7 @@
 import axios from "axios";
 
 const axiosAuth = axios.create({
-  baseURL: "http://localhost:5000/auth",
+  baseURL: "https://skill-gap-analyse.onrender.com/auth",
   withCredentials: true,
 });
 
