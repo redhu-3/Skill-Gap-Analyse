@@ -255,11 +255,186 @@ exports.getAssessmentQuestions = async (req, res) => {
 
 
 
+// exports.submitAssessment = async (req, res) => {
+//   try {
+//     const userId = req.user.id;
+//     const { assessmentId } = req.params;
+//     const { answers ,timeTaken} = req.body;
+
+//     if (!Array.isArray(answers) || answers.length === 0) {
+//       return res.status(400).json({ message: "Answers are required" });
+//     }
+
+//     if (!mongoose.Types.ObjectId.isValid(assessmentId)) {
+//       return res.status(400).json({ message: "Invalid assessment ID" });
+//     }
+
+//     const assessment = await Assessment.findById(assessmentId);
+//     if (!assessment) {
+//       return res.status(404).json({ message: "Assessment not found" });
+//     }
+    
+
+//     const skillId = assessment.skill;
+
+//     const userSkill = await UserSkill.findOne({
+//       user: userId,
+//       skill: skillId,
+//     });
+
+//     if (!userSkill) {
+//       return res.status(403).json({ message: "Skill not in progress" });
+//     }
+
+//     const questionIds = answers.map((a) => a.questionId);
+
+//     const questions = await Question.find({
+//       _id: { $in: questionIds },
+//       assessment: assessmentId,
+//       status: "active",
+//     });
+
+//     if (questions.length !== answers.length) {
+//       return res.status(400).json({
+//         message: "Some questions are invalid",
+//       });
+//     }
+
+//     let correctCount = 0;
+
+//     // =========================
+//     // ✅ EVALUATE QUESTIONS
+//     // =========================
+
+//     for (const question of questions) {
+//       const userAnswer = answers.find(
+//         (a) => a.questionId === question._id.toString()
+//       );
+
+//       if (!userAnswer) continue;
+
+//       // -----------------------
+//       // 🧠 CODING QUESTION
+//       // -----------------------
+//       if (question.type === "coding") {
+
+//         const attempt = await UserQuestionAttempt.findOne({
+//           user: userId,
+//           question: question._id,
+//           assessment: assessmentId,
+//         });
+
+//         if (attempt && attempt.isCorrect) {
+//           correctCount++;
+//         }
+
+//       }
+//       // -----------------------
+//       // 📝 MCQ / FILL
+//       // -----------------------
+//       else {
+
+//         const isCorrect =
+//           String(question.correctAnswer).trim() ===
+//           String(userAnswer.answer).trim();
+
+//         // Store attempt
+//         await UserQuestionAttempt.findOneAndUpdate(
+//           {
+//             user: userId,
+//             question: question._id,
+//             assessment: assessmentId,
+//           },
+//           {
+//             answer: userAnswer.answer,
+//             isCorrect,
+//           },
+//           { upsert: true }
+//         );
+
+//         if (isCorrect) {
+//           correctCount++;
+//         }
+//       }
+//     }
+
+//     // =========================
+//     // 🎯 CALCULATE SCORE
+//     // =========================
+
+//     const totalQuestions = questions.length;
+//     const score = (correctCount / totalQuestions) * 100;
+//     const passed = score >= assessment.minPassingPercentage;
+
+//     const attemptNumber =
+//       (await UserAssessment.countDocuments({
+//         user: userId,
+//         assessment: assessmentId,
+//       })) + 1;
+
+//     await UserAssessment.create({
+//       user: userId,
+//       skill: skillId,
+//       assessment: assessmentId,
+//       level: assessment.level,
+//       score,
+//       passed,
+//       attemptNumber,
+//        timeTaken: timeTaken || 0,  
+
+//     });
+
+//     // =========================
+//     // 🚀 UPDATE SKILL PROGRESS
+//     // =========================
+
+//     if (passed) {
+//       if (!userSkill.completedAssessmentLevels.includes(assessment.level)) {
+//         userSkill.completedAssessmentLevels.push(assessment.level);
+//       }
+
+//       userSkill.currentAssessmentLevel = assessment.level + 1;
+
+//       const totalLevels = await Assessment.countDocuments({
+//         skill: skillId,
+//       });
+
+//       if (
+//         userSkill.completedAssessmentLevels.length === totalLevels
+//       ) {
+//         userSkill.status = "completed";
+//       }
+
+//       await userSkill.save();
+//     }
+
+//     // =========================
+//     // ✅ RESPONSE
+//     // =========================
+
+//     return res.json({
+//       score,
+//       passed,
+//       correctAnswers: correctCount,
+//       totalQuestions,
+//       currentAssessmentLevel: userSkill.currentAssessmentLevel,
+//       skillStatus: userSkill.status,
+//         skillId: skillId,  
+//     });
+
+//   } catch (error) {
+//     console.error("Submit Assessment Error:", error);
+//     return res.status(500).json({
+//       message: "Error submitting assessment",
+//       error: error.message,
+//     });
+//   }
+// };
 exports.submitAssessment = async (req, res) => {
   try {
     const userId = req.user.id;
     const { assessmentId } = req.params;
-    const { answers ,timeTaken} = req.body;
+    const { answers, timeTaken } = req.body;
 
     if (!Array.isArray(answers) || answers.length === 0) {
       return res.status(400).json({ message: "Answers are required" });
@@ -273,21 +448,15 @@ exports.submitAssessment = async (req, res) => {
     if (!assessment) {
       return res.status(404).json({ message: "Assessment not found" });
     }
-    
 
     const skillId = assessment.skill;
 
-    const userSkill = await UserSkill.findOne({
-      user: userId,
-      skill: skillId,
-    });
-
+    const userSkill = await UserSkill.findOne({ user: userId, skill: skillId });
     if (!userSkill) {
       return res.status(403).json({ message: "Skill not in progress" });
     }
 
     const questionIds = answers.map((a) => a.questionId);
-
     const questions = await Question.find({
       _id: { $in: questionIds },
       assessment: assessmentId,
@@ -295,9 +464,7 @@ exports.submitAssessment = async (req, res) => {
     });
 
     if (questions.length !== answers.length) {
-      return res.status(400).json({
-        message: "Some questions are invalid",
-      });
+      return res.status(400).json({ message: "Some questions are invalid" });
     }
 
     let correctCount = 0;
@@ -305,72 +472,39 @@ exports.submitAssessment = async (req, res) => {
     // =========================
     // ✅ EVALUATE QUESTIONS
     // =========================
-
     for (const question of questions) {
-      const userAnswer = answers.find(
-        (a) => a.questionId === question._id.toString()
-      );
-
+      const userAnswer = answers.find((a) => a.questionId === question._id.toString());
       if (!userAnswer) continue;
 
-      // -----------------------
-      // 🧠 CODING QUESTION
-      // -----------------------
       if (question.type === "coding") {
-
         const attempt = await UserQuestionAttempt.findOne({
           user: userId,
           question: question._id,
           assessment: assessmentId,
         });
+        if (attempt && attempt.isCorrect) correctCount++;
+      } else {
+        const isCorrect = String(question.correctAnswer).trim() === String(userAnswer.answer).trim();
 
-        if (attempt && attempt.isCorrect) {
-          correctCount++;
-        }
-
-      }
-      // -----------------------
-      // 📝 MCQ / FILL
-      // -----------------------
-      else {
-
-        const isCorrect =
-          String(question.correctAnswer).trim() ===
-          String(userAnswer.answer).trim();
-
-        // Store attempt
         await UserQuestionAttempt.findOneAndUpdate(
-          {
-            user: userId,
-            question: question._id,
-            assessment: assessmentId,
-          },
-          {
-            answer: userAnswer.answer,
-            isCorrect,
-          },
+          { user: userId, question: question._id, assessment: assessmentId },
+          { answer: userAnswer.answer, isCorrect },
           { upsert: true }
         );
 
-        if (isCorrect) {
-          correctCount++;
-        }
+        if (isCorrect) correctCount++;
       }
     }
 
     // =========================
     // 🎯 CALCULATE SCORE
     // =========================
-
     const totalQuestions = questions.length;
     const score = (correctCount / totalQuestions) * 100;
     const passed = score >= assessment.minPassingPercentage;
 
     const attemptNumber =
-      (await UserAssessment.countDocuments({
-        user: userId,
-        assessment: assessmentId,
-      })) + 1;
+      (await UserAssessment.countDocuments({ user: userId, assessment: assessmentId })) + 1;
 
     await UserAssessment.create({
       user: userId,
@@ -380,38 +514,49 @@ exports.submitAssessment = async (req, res) => {
       score,
       passed,
       attemptNumber,
-       timeTaken: timeTaken || 0,  
-
+      timeTaken: timeTaken || 0,
     });
 
     // =========================
     // 🚀 UPDATE SKILL PROGRESS
     // =========================
-
-    if (passed) {
-      if (!userSkill.completedAssessmentLevels.includes(assessment.level)) {
-        userSkill.completedAssessmentLevels.push(assessment.level);
-      }
-
-      userSkill.currentAssessmentLevel = assessment.level + 1;
-
-      const totalLevels = await Assessment.countDocuments({
-        skill: skillId,
-      });
-
-      if (
-        userSkill.completedAssessmentLevels.length === totalLevels
-      ) {
-        userSkill.status = "completed";
-      }
-
-      await userSkill.save();
+    if (passed && !userSkill.completedAssessmentLevels.includes(assessment.level)) {
+      userSkill.completedAssessmentLevels.push(assessment.level);
     }
+
+    // Update current assessment level
+    const allLevels = await Assessment.find({ skill: skillId }).sort({ level: 1 });
+    const completedLevelsSet = new Set(userSkill.completedAssessmentLevels);
+
+    // Check if all assessments of this skill are completed & passed
+    const allAssessmentsPassed = allLevels.every(a => completedLevelsSet.has(a.level));
+
+    if (allAssessmentsPassed) {
+      userSkill.status = "completed";
+
+      // Unlock next skills
+      const nextSkills = await Skill.find({ prerequisites: skillId });
+      for (const nextSkill of nextSkills) {
+        const exists = await UserSkill.findOne({ user: userId, skill: nextSkill._id });
+        if (!exists) {
+          await UserSkill.create({
+            user: userId,
+            jobRole: userSkill.jobRole,
+            skill: nextSkill._id,
+            status: "in-progress",
+          });
+        }
+      }
+    } else {
+      // Only move currentAssessmentLevel to next numeric level, but do not complete skill
+      userSkill.currentAssessmentLevel = Math.max(...userSkill.completedAssessmentLevels) + 1;
+    }
+
+    await userSkill.save();
 
     // =========================
     // ✅ RESPONSE
     // =========================
-
     return res.json({
       score,
       passed,
@@ -419,14 +564,10 @@ exports.submitAssessment = async (req, res) => {
       totalQuestions,
       currentAssessmentLevel: userSkill.currentAssessmentLevel,
       skillStatus: userSkill.status,
-        skillId: skillId,  
+      skillId,
     });
-
   } catch (error) {
     console.error("Submit Assessment Error:", error);
-    return res.status(500).json({
-      message: "Error submitting assessment",
-      error: error.message,
-    });
+    return res.status(500).json({ message: "Error submitting assessment", error: error.message });
   }
 };
