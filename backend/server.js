@@ -23,15 +23,39 @@ const app = express();
 
 // ---------------- MIDDLEWARE ----------------
 //app.use(cors());
+// app.use(
+//   cors({
+//     origin: ["http://localhost:5173", "http://localhost:5174"],
+//     credentials: true,
+//   })
+// );
+
+
+// app.use(express.json());
+// ---------------- MIDDLEWARE ----------------
+const allowedOrigins = [
+  "http://localhost:5173",
+  "http://localhost:5174",
+  "https://skill-gap-analyse-gold.vercel.app", // ✅ your Vercel frontend
+];
+
 app.use(
   cors({
-    origin: ["http://localhost:5173", "http://localhost:5174"],
+    origin: function (origin, callback) {
+      if (!origin) return callback(null, true); // allow Postman / mobile apps
+
+      if (allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error("Not allowed by CORS"));
+      }
+    },
     credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
 
-
-app.use(express.json());
 
 // ---------------- SESSION ----------------
 app.use(
