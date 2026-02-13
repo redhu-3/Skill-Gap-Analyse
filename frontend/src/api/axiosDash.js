@@ -4,7 +4,7 @@ import axios from "axios";
 const token = localStorage.getItem("token");
 
 const axiosDash = axios.create({
-  baseURL: "http://localhost:5000/api/job-roles", // matches backend
+  baseURL: "https://skill-gap-analyse.onrender.com/api/job-roles", // matches backend
   headers: {
     "Content-Type": "application/json",
     Authorization: token ? `Bearer ${token}` : "",

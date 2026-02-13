@@ -13,7 +13,7 @@
 import axios from "axios";
 
 const axiosInstance = axios.create({
-  baseURL: "http://localhost:5000/api",
+  baseURL: "https://skill-gap-analyse.onrender.com/api",
   headers: {
     "Content-Type": "application/json",
   },
