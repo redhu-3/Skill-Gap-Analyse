@@ -1,26 +1,28 @@
 const express = require("express");
 const router = express.Router();
-const { createSkill,getSkillsByJobRole,updateSkill,setPrerequisites,getSkillWithPrerequisites,getPrerequisiteData,getCurrentSkill, getSkillDetails, startLearning} = require("../controllers/skillController");
-const { protect, verifyRole } = require("../middleware/authMiddleware");
+const { protect, verifyRoles } = require("../middleware/authMiddleware");
+const { createSkill, getSkillsByJobRole, updateSkill, setPrerequisites, getSkillWithPrerequisites, getPrerequisiteData, getCurrentSkill, getSkillDetails, startLearning, deleteSkill } = require("../controllers/skillController");
 const Skill=require("../models/Skill")
 const UserSkill = require("../models/UserSkill");
 
 // Admin: Add new skill
-router.post("/create", protect, verifyRole("admin"), createSkill);
-router.get("/job-role/:jobRoleId", protect, verifyRole("admin"), getSkillsByJobRole);
+router.post("/create", protect, verifyRoles(["admin"]), createSkill);
+router.get("/job-role/:jobRoleId", protect, verifyRoles(["admin", "manager", "contributor", "viewer", "user"]), getSkillsByJobRole);
 // Admin: Update a skill
-router.put("/update/:skillId", protect, verifyRole("admin"), updateSkill);
+router.put("/update/:skillId", protect, verifyRoles(["admin"]), updateSkill);
 // Admin: Set / Update skill prerequisites
-router.put("/prerequisites/:skillId", protect, verifyRole("admin"), setPrerequisites);
+router.put("/prerequisites/:skillId", protect, verifyRoles(["admin"]), setPrerequisites);
+// Admin: Delete a skill
+router.delete("/delete/:skillId", protect, verifyRoles(["admin"]), deleteSkill);
 // Get a skill with its prerequisites
-router.get("/:skillId", protect, verifyRole("admin"), getSkillWithPrerequisites);
-router.get("/:skillId/details",protect,verifyRole("user"),getSkillDetails)
+router.get("/:skillId", protect, verifyRoles(["admin", "manager", "contributor", "viewer", "user"]), getSkillWithPrerequisites);
+router.get("/:skillId/details",protect,verifyRoles(["admin", "manager", "contributor", "viewer", "user"]),getSkillDetails)
 
-router.post("/job-role/:jobRoleId/start-learning",protect,verifyRole("user"),startLearning)
+router.post("/job-role/:jobRoleId/start-learning",protect,verifyRoles(["admin", "manager", "contributor", "viewer", "user"]),startLearning)
 router.get(
   "/:skillId/prerequisites",
   protect,
-  verifyRole("admin"),
+  verifyRoles(["admin", "manager", "contributor", "viewer", "user"]),
   getPrerequisiteData
 );
 

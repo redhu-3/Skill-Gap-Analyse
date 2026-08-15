@@ -1,7 +1,9 @@
 
 const Question = require("../models/Question");
 
-const Assessment = require("../models/Assessment"); // ← ADD THIS
+const Assessment = require("../models/Assessment");
+const Skill = require("../models/Skill");
+const { canModifyJobRole } = require("../utils/authUtils");
 const mongoose = require("mongoose");
 
 // Admin: Add a question
@@ -114,14 +116,29 @@ exports.addQuestion = async (req, res) => {
       }
     }
 
-    // 🔒 STRICT TOTAL QUESTIONS LIMIT (ONLY IF ASSESSMENT EXISTS)
+    // 🔒 AUTHORIZATION CHECK
+    let targetSkillId = skill;
     if (assessment) {
       const assessmentData = await Assessment.findById(assessment);
       if (!assessmentData) {
-        return res
-          .status(404)
-          .json({ message: "Assessment not found" });
+        return res.status(404).json({ message: "Assessment not found" });
       }
+      targetSkillId = assessmentData.skill;
+    }
+
+    const targetSkill = await Skill.findById(targetSkillId);
+    if (!targetSkill) {
+      return res.status(404).json({ message: "Skill not found" });
+    }
+
+    const jobRoleId = typeof targetSkill.jobRole === 'object' ? targetSkill.jobRole._id : targetSkill.jobRole;
+    if (!(await canModifyJobRole(req.user.id, jobRoleId))) {
+      return res.status(403).json({ message: "Forbidden: You do not have active access to modify this Job Role." });
+    }
+
+    // 🔒 STRICT TOTAL QUESTIONS LIMIT (ONLY IF ASSESSMENT EXISTS)
+    if (assessment) {
+      const assessmentData = await Assessment.findById(assessment);
 
       const existingCount = await Question.countDocuments({
         assessment,
@@ -206,6 +223,26 @@ exports.updateQuestion = async (req, res) => {
   try {
     const { id } = req.params;
 
+    const question = await Question.findById(id);
+    if (!question) return res.status(404).json({ message: "Question not found" });
+
+    // 🔒 AUTHORIZATION CHECK
+    let targetSkillId = question.skill;
+    if (question.assessment) {
+      const assessmentData = await Assessment.findById(question.assessment);
+      if (assessmentData) targetSkillId = assessmentData.skill;
+    }
+
+    if (targetSkillId) {
+      const targetSkill = await Skill.findById(targetSkillId);
+      if (targetSkill) {
+        const jobRoleId = typeof targetSkill.jobRole === 'object' ? targetSkill.jobRole._id : targetSkill.jobRole;
+        if (!(await canModifyJobRole(req.user.id, jobRoleId))) {
+          return res.status(403).json({ message: "Forbidden: You do not have active access to modify this Job Role." });
+        }
+      }
+    }
+
     const updated = await Question.findByIdAndUpdate(id, req.body, {
       new: true,
       runValidators: true,
@@ -225,8 +262,27 @@ exports.deleteQuestion = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const deleted = await Question.findByIdAndDelete(id);
-    if (!deleted) return res.status(404).json({ message: "Question not found" });
+    const question = await Question.findById(id);
+    if (!question) return res.status(404).json({ message: "Question not found" });
+
+    // 🔒 AUTHORIZATION CHECK
+    let targetSkillId = question.skill;
+    if (question.assessment) {
+      const assessmentData = await Assessment.findById(question.assessment);
+      if (assessmentData) targetSkillId = assessmentData.skill;
+    }
+
+    if (targetSkillId) {
+      const targetSkill = await Skill.findById(targetSkillId);
+      if (targetSkill) {
+        const jobRoleId = typeof targetSkill.jobRole === 'object' ? targetSkill.jobRole._id : targetSkill.jobRole;
+        if (!(await canModifyJobRole(req.user.id, jobRoleId))) {
+          return res.status(403).json({ message: "Forbidden: You do not have active access to modify this Job Role." });
+        }
+      }
+    }
+
+    await Question.findByIdAndDelete(id);
 
     res.json({ message: "Question deleted successfully" });
   } catch (error) {

@@ -34,10 +34,39 @@ const userAssessmentSchema = new mongoose.Schema(
       default: 1,
     },
     timeTaken: {
-  type: Number,
-  default: 0,
-},
+      type: Number,
+      default: 0,
+    },
 
+    // ── Phase 4 Additions ──
+    assessmentVersion: {
+      type: Number,
+      default: 1
+    },
+
+    adaptiveQuestionsCount: {
+      type: Number,
+      default: 0
+    },
+
+    skillBreakdown: [{
+      skill: { type: mongoose.Schema.Types.ObjectId, ref: "Skill" },
+      totalQuestions: Number,
+      correctCount: Number,
+      passed: Boolean
+    }],
+
+    competencyBreakdown: [{
+      competencyArea: String,
+      totalQuestions: Number,
+      correctCount: Number,
+      score: Number // percentage
+    }],
+
+    weightedScore: {
+      type: Number,
+      default: null
+    }
   },
   { timestamps: true }
 );

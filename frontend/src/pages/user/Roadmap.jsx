@@ -134,12 +134,13 @@
 // };
 
 // export default Roadmap;
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import axiosInstance from "../../api/axiosInstance";
-import { motion } from "framer-motion";
-import { FaArrowDown, FaLock, FaCheckCircle } from "react-icons/fa";
 import { useTheme } from "../../context/ThemeContext";
+import { FaLock, FaCheckCircle, FaArrowDown, FaChevronDown, FaChevronUp } from "react-icons/fa";
+import { SparklesIcon } from "@heroicons/react/24/outline";
+import { motion, AnimatePresence } from "framer-motion";
 
 const Roadmap = () => {
   const { jobRoleId } = useParams();
@@ -151,6 +152,7 @@ const Roadmap = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [starting, setStarting] = useState(false);
+  const [masteredExpanded, setMasteredExpanded] = useState(false);
 
   /* ================= FETCH ROADMAP ================= */
   useEffect(() => {
@@ -236,7 +238,35 @@ const Roadmap = () => {
 
         {/* ROADMAP */}
         <div className="flex flex-col items-center">
-          {roadmap.map((skill, index) => (
+          {/* MASTERED SKILLS SECTION */}
+          {roadmap.filter(s => s.status === "completed").length > 0 && (
+            <div className={`w-full rounded-2xl mb-8 border shadow-sm overflow-hidden ${darkMode ? "bg-indigo-900/20 border-indigo-500/30" : "bg-indigo-50 border-indigo-200"}`}>
+              <div className="p-4 flex justify-between items-center bg-indigo-500/10 cursor-pointer" onClick={() => setMasteredExpanded(!masteredExpanded)}>
+                <div className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400 font-bold">
+                  <SparklesIcon className="w-5 h-5" />
+                  <span>Mastered Skills ({roadmap.filter(s => s.status === "completed").length})</span>
+                </div>
+                {masteredExpanded ? <FaChevronUp className="text-indigo-500" /> : <FaChevronDown className="text-indigo-500" />}
+              </div>
+              <AnimatePresence>
+                {masteredExpanded && (
+                  <motion.div initial={{ height: 0 }} animate={{ height: "auto" }} exit={{ height: 0 }} className="overflow-hidden">
+                    <div className="p-4 space-y-3">
+                      {roadmap.filter(s => s.status === "completed").map((skill) => (
+                        <div key={skill._id} className={`p-3 rounded-xl flex items-center justify-between border ${darkMode ? "bg-gray-800 border-gray-700" : "bg-white border-gray-200"}`}>
+                          <h3 className="font-semibold">{skill.name}</h3>
+                          <FaCheckCircle className="text-emerald-500 w-5 h-5" />
+                        </div>
+                      ))}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          )}
+
+          {/* LEARNING PATH SECTION */}
+          {roadmap.filter(s => s.status !== "completed").map((skill, index, arr) => (
             <div key={skill._id} className="w-full flex flex-col items-center">
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
@@ -270,7 +300,7 @@ const Roadmap = () => {
                 </p>
               </motion.div>
 
-              {index !== roadmap.length - 1 && (
+              {index !== arr.length - 1 && (
                 <FaArrowDown className="my-6 opacity-40" />
               )}
             </div>

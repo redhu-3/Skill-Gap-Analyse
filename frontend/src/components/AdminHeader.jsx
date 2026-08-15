@@ -1,8 +1,29 @@
-import { Bars3Icon, SunIcon, MoonIcon } from "@heroicons/react/24/outline";
+import { Bars3Icon, SunIcon, MoonIcon, BellIcon } from "@heroicons/react/24/outline";
 import { useTheme } from "../context/ThemeContext";
+import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import axiosDash from "../api/axiosDash";
 
 const AdminHeader = ({ onMenuClick }) => {
   const { darkMode, toggleTheme } = useTheme();
+  const navigate = useNavigate();
+  const [pendingRequests, setPendingRequests] = useState(0);
+
+  useEffect(() => {
+    const fetchPending = async () => {
+      try {
+        const res = await axiosDash.get("/access-requests/incoming");
+        const pendingCount = res.data.requests?.filter(req => req.status === "Pending").length || 0;
+        setPendingRequests(pendingCount);
+      } catch (err) {
+        console.error("Failed to fetch pending requests for notifications", err);
+      }
+    };
+    fetchPending();
+    // Refresh every 30 seconds
+    const interval = setInterval(fetchPending, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   return (
     <header
@@ -52,6 +73,21 @@ const AdminHeader = ({ onMenuClick }) => {
             <SunIcon className="h-5 w-5 text-yellow-400" />
           ) : (
             <MoonIcon className="h-5 w-5 text-indigo-600" />
+          )}
+        </button>
+
+        <button
+          onClick={() => navigate("/admin/access-requests")}
+          className={`
+            relative p-2 rounded-md transition
+            ${darkMode ? "hover:bg-gray-800" : "hover:bg-indigo-100"}
+          `}
+        >
+          <BellIcon className={`h-5 w-5 ${darkMode ? "text-gray-300" : "text-indigo-600"}`} />
+          {pendingRequests > 0 && (
+            <span className="absolute top-1 right-1 flex h-2.5 w-2.5 items-center justify-center rounded-full bg-red-500 text-[8px] text-white ring-2 ring-white dark:ring-gray-900">
+              {pendingRequests}
+            </span>
           )}
         </button>
 

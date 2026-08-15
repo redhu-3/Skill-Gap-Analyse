@@ -8,6 +8,11 @@ const mongoose = require("mongoose");
 const axios=require("axios");
 const UserQuestionAttempt = require("../models/UserQuestionAttempt");
 
+// Phase 4 Imports
+const UserAssessmentSession = require("../models/UserAssessmentSession");
+const AssessmentStats = require("../models/AssessmentStats");
+const assessmentEngine = require("../services/assessmentEngine");
+
 exports.getAssessmentAttempts = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -569,5 +574,331 @@ exports.submitAssessment = async (req, res) => {
   } catch (error) {
     console.error("Submit Assessment Error:", error);
     return res.status(500).json({ message: "Error submitting assessment", error: error.message });
+  }
+};
+
+// ============================================================================
+// ── PHASE 4 ADAPTIVE & DYNAMIC TESTING OPERATIONS ──
+// ============================================================================
+
+exports.startAssessmentSession = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { assessmentId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(assessmentId)) {
+      return res.status(400).json({ message: "Invalid assessment ID" });
+    }
+
+    const assessment = await Assessment.findById(assessmentId);
+    if (!assessment) {
+      return res.status(404).json({ message: "Assessment not found" });
+    }
+
+    // Check if user has an active session for this assessment
+    let session = await UserAssessmentSession.findOne({
+      user: userId,
+      assessment: assessmentId,
+      submitted: false
+    });
+
+    if (session) {
+      return res.status(200).json({ message: "Resuming active session", session });
+    }
+
+    // Generate pool if dynamic_pool or static
+    let pool = [];
+    if (assessment.selectionMode === "dynamic_pool") {
+      const poolQ = await assessmentEngine.generateDynamicPool(assessment);
+      pool = poolQ.map(q => q._id);
+    } else if (assessment.selectionMode === "static") {
+      pool = assessment.questions;
+    }
+
+    session = await UserAssessmentSession.create({
+      user: userId,
+      assessment: assessmentId,
+      startTime: new Date(),
+      questionsPool: pool,
+      questionsAnswered: [],
+      adaptiveState: {
+        currentDifficulty: assessment.adaptiveRules?.baseDifficulty || "easy",
+        consecutiveCorrect: 0,
+        consecutiveIncorrect: 0
+      }
+    });
+
+    res.status(201).json({ message: "Session started", session });
+  } catch (error) {
+    console.error("startAssessmentSession error:", error);
+    res.status(500).json({ message: "Error starting session", error: error.message });
+  }
+};
+
+exports.getNextQuestion = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { sessionId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(sessionId)) {
+      return res.status(400).json({ message: "Invalid session ID" });
+    }
+
+    const session = await UserAssessmentSession.findById(sessionId).populate("assessment");
+    if (!session) {
+      return res.status(404).json({ message: "Session not found" });
+    }
+    if (session.submitted) {
+      return res.status(400).json({ message: "Session already submitted" });
+    }
+
+    const assessment = session.assessment;
+    const limitCount = assessment.selectionMode === "adaptive" 
+      ? (assessment.blueprint?.totalQuestions || 30) 
+      : (assessment.selectionMode === "dynamic_pool" 
+          ? (assessment.blueprint?.totalQuestions || 10) 
+          : assessment.randomPick);
+
+    if (session.questionsAnswered.length >= limitCount) {
+      return res.status(200).json({ message: "All questions completed", isFinished: true });
+    }
+
+    let question = null;
+    if (assessment.selectionMode === "adaptive") {
+      question = await assessmentEngine.resolveNextAdaptiveQuestion(session, assessment);
+    } else {
+      const answeredIds = new Set(session.questionsAnswered.map(qa => qa.question.toString()));
+      const nextId = session.questionsPool.find(id => !answeredIds.has(id.toString()));
+      if (nextId) {
+        question = await Question.findById(nextId);
+      }
+    }
+
+    if (!question) {
+      return res.status(200).json({ message: "No more questions available in the pool", isFinished: true });
+    }
+
+    const formatted = question.toObject();
+    if (formatted.type === "coding" && formatted.testCases?.length) {
+      formatted.testCases = formatted.testCases.filter(tc => !tc.isHidden);
+    }
+
+    res.status(200).json({
+      question: formatted,
+      currentIndex: session.questionsAnswered.length,
+      totalQuestions: limitCount,
+      timer: question.timer || assessment.timer || 0
+    });
+  } catch (error) {
+    console.error("getNextQuestion error:", error);
+    res.status(500).json({ message: "Error fetching question", error: error.message });
+  }
+};
+
+exports.submitSessionQuestion = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { sessionId } = req.params;
+    const { questionId, answer, isCodingResult } = req.body;
+
+    if (!mongoose.Types.ObjectId.isValid(sessionId) || !mongoose.Types.ObjectId.isValid(questionId)) {
+      return res.status(400).json({ message: "Invalid parameters" });
+    }
+
+    const session = await UserAssessmentSession.findById(sessionId).populate("assessment");
+    if (!session || session.submitted) {
+      return res.status(404).json({ message: "Active session not found" });
+    }
+
+    const question = await Question.findById(questionId);
+    if (!question) {
+      return res.status(404).json({ message: "Question not found" });
+    }
+
+    const alreadyAnswered = session.questionsAnswered.some(qa => qa.question.toString() === questionId);
+    if (alreadyAnswered) {
+      return res.status(400).json({ message: "Question already answered in this session" });
+    }
+
+    let isCorrect = false;
+    if (question.type === "coding") {
+      isCorrect = isCodingResult?.isCorrect || false;
+      
+      await UserQuestionAttempt.findOneAndUpdate(
+        { user: userId, question: questionId, assessment: session.assessment._id },
+        { 
+          code: answer, 
+          language: isCodingResult?.language || question.language, 
+          isCorrect,
+          allPublicPassed: isCorrect,
+          allHiddenPassed: isCorrect
+        },
+        { upsert: true }
+      );
+    } else {
+      isCorrect = String(question.correctAnswer).trim() === String(answer).trim();
+      
+      await UserQuestionAttempt.findOneAndUpdate(
+        { user: userId, question: questionId, assessment: session.assessment._id },
+        { answer, isCorrect },
+        { upsert: true }
+      );
+    }
+
+    if (session.assessment.selectionMode === "adaptive") {
+      assessmentEngine.updateAdaptiveState(session, isCorrect, session.assessment);
+    }
+
+    session.questionsAnswered.push({
+      question: questionId,
+      userAnswer: question.type === "coding" ? "[Code Submitted]" : String(answer),
+      isCorrect,
+      difficulty: question.difficulty
+    });
+
+    await session.save();
+
+    res.status(200).json({
+      message: "Answer registered",
+      isCorrect,
+      adaptiveState: session.adaptiveState
+    });
+  } catch (error) {
+    console.error("submitSessionQuestion error:", error);
+    res.status(500).json({ message: "Error submitting question", error: error.message });
+  }
+};
+
+exports.submitSessionAssessment = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { sessionId } = req.params;
+    const { timeTaken } = req.body;
+
+    if (!mongoose.Types.ObjectId.isValid(sessionId)) {
+      return res.status(400).json({ message: "Invalid session ID" });
+    }
+
+    const session = await UserAssessmentSession.findById(sessionId).populate("assessment");
+    if (!session || session.submitted) {
+      return res.status(404).json({ message: "Active session not found" });
+    }
+
+    const assessment = session.assessment;
+    const skillId = assessment.skill;
+
+    let userSkill = await UserSkill.findOne({ user: userId, skill: skillId });
+    if (!userSkill) {
+      userSkill = await UserSkill.create({
+        user: userId,
+        skill: skillId,
+        status: "in-progress"
+      });
+    }
+
+    const grades = await assessmentEngine.gradeSession(session, assessment);
+
+    const attemptNumber = (await UserAssessment.countDocuments({
+      user: userId,
+      assessment: assessment._id
+    })) + 1;
+
+    const userAssessment = await UserAssessment.create({
+      user: userId,
+      skill: skillId,
+      assessment: assessment._id,
+      level: assessment.level,
+      score: grades.score,
+      passed: grades.passed,
+      attemptNumber,
+      timeTaken: timeTaken || 0,
+      assessmentVersion: assessment.version || 1,
+      adaptiveQuestionsCount: assessment.selectionMode === "adaptive" ? session.questionsAnswered.length : 0,
+      skillBreakdown: grades.skillBreakdown,
+      competencyBreakdown: grades.competencyBreakdown,
+      weightedScore: grades.weightedScore
+    });
+
+    session.submitted = true;
+    await session.save();
+
+    if (grades.passed && !userSkill.completedAssessmentLevels.includes(assessment.level)) {
+      userSkill.completedAssessmentLevels.push(assessment.level);
+    }
+
+    const allLevels = await Assessment.find({ skill: skillId }).sort({ level: 1 });
+    const completedLevelsSet = new Set(userSkill.completedAssessmentLevels);
+    const allAssessmentsPassed = allLevels.every(a => completedLevelsSet.has(a.level));
+
+    if (allAssessmentsPassed) {
+      userSkill.status = "completed";
+
+      const nextSkills = await Skill.find({ prerequisites: skillId });
+      for (const nextSkill of nextSkills) {
+        const exists = await UserSkill.findOne({ user: userId, skill: nextSkill._id });
+        if (!exists) {
+          await UserSkill.create({
+            user: userId,
+            jobRole: userSkill.jobRole,
+            skill: nextSkill._id,
+            status: "in-progress",
+          });
+        }
+      }
+    } else if (userSkill.completedAssessmentLevels.length > 0) {
+      userSkill.currentAssessmentLevel = Math.max(...userSkill.completedAssessmentLevels) + 1;
+    }
+
+    await userSkill.save();
+
+    try {
+      const stats = await AssessmentStats.findOne({ assessment: assessment._id });
+      const attemptsCount = (stats?.attemptCount || 0) + 1;
+      const passRate = stats 
+        ? ((stats.passRate * stats.attemptCount + (grades.passed ? 100 : 0)) / attemptsCount)
+        : (grades.passed ? 100 : 0);
+      const avgScore = stats
+        ? ((stats.averageScore * stats.attemptCount + grades.score) / attemptsCount)
+        : grades.score;
+
+      const questionMetrics = stats ? [...stats.questionMetrics] : [];
+      for (const item of session.questionsAnswered) {
+        const qId = item.question.toString();
+        let metric = questionMetrics.find(m => m.question.toString() === qId);
+        if (!metric) {
+          metric = { question: qId, totalAttempts: 0, successRate: 0 };
+          questionMetrics.push(metric);
+        }
+        const total = metric.totalAttempts + 1;
+        metric.successRate = (metric.successRate * metric.totalAttempts + (item.isCorrect ? 100 : 0)) / total;
+        metric.totalAttempts = total;
+      }
+
+      await AssessmentStats.findOneAndUpdate(
+        { assessment: assessment._id },
+        { 
+          attemptCount: attemptsCount, 
+          passRate, 
+          averageScore: avgScore,
+          questionMetrics,
+          lastUpdatedAt: new Date()
+        },
+        { upsert: true }
+      );
+    } catch (statsErr) {
+      console.error("Failed to update AssessmentStats:", statsErr);
+    }
+
+    res.status(200).json({
+      message: "Assessment submitted successfully",
+      score: grades.score,
+      passed: grades.passed,
+      weightedScore: grades.weightedScore,
+      skillStatus: userSkill.status,
+      competencyBreakdown: grades.competencyBreakdown
+    });
+  } catch (error) {
+    console.error("submitSessionAssessment error:", error);
+    res.status(500).json({ message: "Error submitting assessment", error: error.message });
   }
 };

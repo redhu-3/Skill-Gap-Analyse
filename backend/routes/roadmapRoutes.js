@@ -2,12 +2,12 @@ const express = require("express");
 const router = express.Router();
 
 const { getUserRoadmap } = require("../controllers/roadmapController");
-const { protect, verifyRole } = require("../middleware/authMiddleware");
+const { protect, verifyRoles } = require("../middleware/authMiddleware"); // ✅ verifyRoles (plural)
 
 router.get(
   "/:jobRoleId",
   protect,
-  verifyRole("user"),
+  verifyRoles(["user", "viewer"]), // ✅ accepts both roles
   getUserRoadmap
 );
 

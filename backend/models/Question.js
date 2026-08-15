@@ -141,6 +141,17 @@ const questionSchema = new mongoose.Schema(
       default: 0,
     },
 
+    // ── Phase 4 Additions ──
+    estimatedTime: {
+      type: Number,
+      default: 60, // duration in seconds
+    },
+
+    competencyArea: {
+      type: String,
+      default: null, // defaults to Skill's competency area if null
+    },
+
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Admin",

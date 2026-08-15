@@ -3,6 +3,7 @@ const UserRoleEnrollment = require("../models/UserRoleEnrollment");
 const UserSkill = require("../models/UserSkill");
 const Skill = require("../models/Skill");
 const JobRole = require("../models/JobRole");
+const DiagnosticResult = require("../models/DiagnosticResult");
 
 /**
  * USER: Enroll into a Job Role
@@ -54,21 +55,50 @@ exports.enrollInJobRole = async (req, res) => {
       });
     }
 
-    // 5️⃣ Create UserSkill entries
-    const userSkillDocs = skills.map((skill, index) => ({
-      user: userId,
-      skill: skill._id,
-      status: index === 0 ? "in-progress" : "locked",
-      score: 0,
-      attempts: 0,
-    }));
+    // 5️⃣ Check diagnostic results for auto-completion
+    const diagnostic = await DiagnosticResult.findOne({ user: userId });
+    const masteredSkills = new Set();
+    if (diagnostic && diagnostic.scoresBySkillName) {
+      for (const [skillName, score] of diagnostic.scoresBySkillName.entries()) {
+        if (score >= 80) { // If they scored 80% or higher, consider it mastered
+          masteredSkills.add(skillName);
+        }
+      }
+    }
+
+    // 6️⃣ Create UserSkill entries
+    let firstUnlockedSkillId = null;
+    let foundUnlocked = false;
+
+    const userSkillDocs = skills.map((skill) => {
+      let status = "locked";
+      
+      // Auto-complete if mastered
+      if (masteredSkills.has(skill.name)) {
+        status = "completed";
+      } 
+      else if (!foundUnlocked) {
+        status = "in-progress";
+        firstUnlockedSkillId = skill._id;
+        foundUnlocked = true;
+      }
+
+      return {
+        user: userId,
+        jobRole: jobRoleId,
+        skill: skill._id,
+        status,
+        score: status === "completed" ? 100 : 0,
+        attempts: 0,
+      };
+    });
 
     await UserSkill.insertMany(userSkillDocs);
 
     res.status(201).json({
       message: "Enrollment successful. Your journey has started!",
       enrollmentId: enrollment._id,
-      firstSkillId: skills[0]._id,
+      firstSkillId: firstUnlockedSkillId || skills[0]._id,
     });
 
   } catch (error) {

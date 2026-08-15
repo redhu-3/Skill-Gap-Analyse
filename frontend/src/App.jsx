@@ -10,7 +10,21 @@ import JobRoles from "./pages/user/JobRoles";
 import Roadmap from "./pages/user/Roadmap";
 import SkillsPage from "./pages/user/SkillsPage";
 import AssessmentPage from "./pages/user/AssessmentPage";
-//import ResultModal from "./components/user/ResultModal";
+import GapAnalysis from "./pages/user/GapAnalysis";
+import DiagnosticLanding from "./pages/user/DiagnosticLanding";
+import DiagnosticTest from "./pages/user/DiagnosticTest";
+import DiagnosticResults from "./pages/user/DiagnosticResults";
+
+// ✅ Auth Guard — blocks non-users from accessing any user routes
+const ProtectedUserRoute = ({ children }) => {
+  const token = localStorage.getItem("token");
+  
+  if (!token) {
+    return <Navigate to="/login" replace />;
+  }
+  return children;
+};
+
 function App() {
   return (
     <BrowserRouter>
@@ -24,19 +38,21 @@ function App() {
         {/* OAuth redirect page */}
         <Route path="/oauth-success" element={<OAuthSuccess />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
-  <Route path="/reset-password/:token" element={<ResetPassword />} />
+        <Route path="/reset-password/:token" element={<ResetPassword />} />
 
         {/* Dashboards */}
         <Route path="/admin/*" element={<AdminRoutes/>} />
-        <Route path="/user/dashboard" element={<UserDashboard/>} />
-         <Route path="/user/job-roles" element={<JobRoles />} />  {/* <-- new route */}
-           <Route path="/skills/:skillId" element={<SkillsPage />} />
-        <Route path="/assessment/:assessmentId" element={<AssessmentPage />} />
-
-         
-        {/* ✅ ROADMAP PAGE */}
-        <Route path="/user/roadmap/:jobRoleId" element={<Roadmap />} />
-
+        
+        {/* ✅ User Routes Protected */}
+        <Route path="/user/dashboard" element={<ProtectedUserRoute><UserDashboard/></ProtectedUserRoute>} />
+        <Route path="/user/diagnostic" element={<ProtectedUserRoute><DiagnosticLanding /></ProtectedUserRoute>} />
+        <Route path="/user/diagnostic/test" element={<ProtectedUserRoute><DiagnosticTest /></ProtectedUserRoute>} />
+        <Route path="/user/diagnostic/results" element={<ProtectedUserRoute><DiagnosticResults /></ProtectedUserRoute>} />
+        <Route path="/user/job-roles" element={<ProtectedUserRoute><JobRoles /></ProtectedUserRoute>} />
+        <Route path="/skills/:skillId" element={<ProtectedUserRoute><SkillsPage /></ProtectedUserRoute>} />
+        <Route path="/assessment/:assessmentId" element={<ProtectedUserRoute><AssessmentPage /></ProtectedUserRoute>} />
+        <Route path="/user/gap-analysis" element={<ProtectedUserRoute><GapAnalysis /></ProtectedUserRoute>} />
+        <Route path="/user/roadmap/:jobRoleId" element={<ProtectedUserRoute><Roadmap /></ProtectedUserRoute>} />
 
         {/* Catch-all redirect */}
         <Route path="*" element={<Navigate to="/" />} />

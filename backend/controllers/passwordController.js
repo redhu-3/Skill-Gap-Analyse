@@ -1,18 +1,8 @@
 const crypto = require("crypto");
 const bcrypt = require("bcryptjs");
-const nodemailer = require("nodemailer");
+const emailService = require("../utils/emailService");
 const User = require("../models/User");
 const Admin = require("../models/Admin");
-
-const transporter = nodemailer.createTransport({
-  host: process.env.EMAIL_HOST,
-  port: process.env.EMAIL_PORT,
-  secure: true, // true for 465
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-});
 
 exports.forgotPassword = async (req, res) => {
   const { email } = req.body;
@@ -41,24 +31,7 @@ exports.forgotPassword = async (req, res) => {
 
     await user.save();
 
-    // 🔗 Reset link (frontend page)
-    const resetLink = `${process.env.FRONTEND_URL}/reset-password/${resetToken}`;
-
-    // Send email
-    const mailOptions = {
-      from: `"SkillGap Support" <${process.env.EMAIL_USER}>`,
-      to: user.email,
-      subject: "Password Reset Request",
-      html: `
-        <p>Hello ${user.name || "User"},</p>
-        <p>You requested a password reset. Click the link below to reset your password:</p>
-        <a href="${resetLink}" target="_blank">Reset Password</a>
-        <p>This link will expire in 15 minutes.</p>
-        <p>If you did not request this, please ignore this email.</p>
-      `,
-    };
-
-    await transporter.sendMail(mailOptions);
+    await emailService.sendPasswordResetEmail(user.email, user.name, resetToken);
 
     res.json({
       message: "If the email exists, a reset link has been sent",
@@ -103,18 +76,7 @@ exports.resetPassword = async (req, res) => {
     await user.save();
 
     // Send confirmation email
-    const mailOptions = {
-      from: `"SkillGap Support" <${process.env.EMAIL_USER}>`,
-      to: user.email,
-      subject: "Your Password Has Been Changed",
-      html: `
-        <p>Hello ${user.name || "User"},</p>
-        <p>This is a confirmation that your password has been successfully changed.</p>
-        <p>If you did not perform this action, please contact support immediately.</p>
-      `,
-    };
-
-    await transporter.sendMail(mailOptions);
+    await emailService.sendPasswordConfirmEmail(user.email, user.name);
 
     res.json({ message: "Password reset successful. You can now log in." });
   } catch (error) {

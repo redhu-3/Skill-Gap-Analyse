@@ -5,8 +5,8 @@ const runCode = async (codeData) => {
 
   try {
     const response = await axios.post(
-      "https://skill-gap-analyse.onrender.com/api/code/run",
-
+      //"https://skill-gap-analyse.onrender.com/api/code/run",
+        "http://localhost:5000/api/code/run",
       codeData,
       {
         headers: {

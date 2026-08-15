@@ -3,14 +3,16 @@ import { createContext, useContext, useEffect, useState } from "react";
 const ThemeContext = createContext();
 
 export const ThemeProvider = ({ children }) => {
-  const [theme, setTheme] = useState("light"); // default light
-
-  // 1️⃣ Load theme ONCE on app start
-  useEffect(() => {
-    const savedTheme = localStorage.getItem("theme") || "light";
-    setTheme(savedTheme);
-    document.documentElement.classList.toggle("dark", savedTheme === "dark");
-  }, []);
+  const [theme, setTheme] = useState(() => {
+    // 1️⃣ Load theme ONCE on app start
+    const savedTheme = localStorage.getItem("theme");
+    if (savedTheme) return savedTheme;
+    // Respect system preference
+    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+      return "dark";
+    }
+    return "light";
+  });
 
   // 2️⃣ Apply theme whenever it changes
   useEffect(() => {

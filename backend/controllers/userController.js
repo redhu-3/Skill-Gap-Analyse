@@ -2,8 +2,10 @@ const User = require("../models/User");
 const Admin = require("../models/Admin"); // ✅ check admin collection too
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
-const JobRole=require("../models/JobRole")
-const UserRole = require("../models/User");
+const JobRole=require("../models/JobRole");
+const UserRoleEnrollment = require("../models/UserRoleEnrollment");
+const UserSkill = require("../models/UserSkill");
+const Skill = require("../models/Skill");
 
 // ---------------- Register User ----------------
 exports.registerUser = async (req, res) => {
@@ -86,7 +88,7 @@ exports.getMe = async (req, res) => {
       return res.status(404).json({ message: "User not found" });
     }
 
-    const activeRole = await UserRole.findOne({
+    const activeRole = await UserRoleEnrollment.findOne({
       user: req.user.id,
       status: "active",
     }).populate("jobRole");
@@ -94,6 +96,7 @@ exports.getMe = async (req, res) => {
     res.json({
       ...user.toObject(),
       activeJobRole: activeRole?.jobRole?.name || null,
+      activeJobRoleId: activeRole?.jobRole?._id || null,
     });
   } catch (err) {
     console.error("getMe error:", err);
@@ -121,7 +124,7 @@ exports.getProfile = async (req, res) => {
 
 exports.getStats = async (req, res) => {
   try {
-    const userRole = await UserRole.findOne({
+    const userRole = await UserRoleEnrollment.findOne({
       user: req.user.id,
       status: "active"
     });
@@ -132,12 +135,26 @@ exports.getStats = async (req, res) => {
       });
     }
 
+    // Count total skills in the job role
+    const totalSkills = await Skill.countDocuments({
+      jobRole: userRole.jobRole,
+      status: "active"
+    });
+
+    // Count user's completed skills for this job role
+    const completedSkills = await UserSkill.countDocuments({
+      user: req.user.id,
+      jobRole: userRole.jobRole,
+      status: "completed"
+    });
+
     res.json({
       hasRole: true,
-      completedSkills: userRole.completedSkills.length,
-      totalSkills: userRole.totalSkills
+      completedSkills,
+      totalSkills
     });
   } catch (err) {
+    console.error("getStats error:", err);
     res.status(500).json({ message: "Server error" });
   }
 };

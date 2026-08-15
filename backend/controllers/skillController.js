@@ -3,6 +3,7 @@ const JobRole = require("../models/JobRole");
 const UserSkill = require('../models/UserSkill');
 const Assessment = require("../models/Assessment");
 const Question = require("../models/Question");
+const { canModifyJobRole } = require("../utils/authUtils");
 
 const hasCircularDependency = async (skillId, prerequisiteIds) => {
   const visited = new Set();
@@ -38,7 +39,17 @@ const hasCircularDependency = async (skillId, prerequisiteIds) => {
 // Admin: Add a new skill to a job role
 exports.createSkill = async (req, res) => {
   try {
-    const { name, category, requiredProficiency, jobRoleId } = req.body;
+    const {
+      name,
+      category,
+      requiredProficiency,
+      jobRoleId,
+      // Phase 1 new fields
+      priority,
+      isMandatory,
+      weightage,
+      competencyArea,
+    } = req.body;
 
     // Basic validation
     if (!name || !category || requiredProficiency === undefined || !jobRoleId) {
@@ -47,14 +58,38 @@ exports.createSkill = async (req, res) => {
       });
     }
 
-    // Check if JobRole exists and belongs to admin
-    const jobRole = await JobRole.findOne({
-      _id: jobRoleId,
-      createdBy: req.user.id,
-    });
+    // Validate priority value
+    const validPriorities = ["core", "secondary", "optional"];
+    if (priority && !validPriorities.includes(priority)) {
+      return res.status(400).json({
+        message: `priority must be one of: ${validPriorities.join(", ")}`
+      });
+    }
+
+    // Validate weightage range
+    if (weightage !== undefined && (weightage < 0 || weightage > 100)) {
+      return res.status(400).json({ message: "weightage must be between 0 and 100" });
+    }
+
+    // Check if JobRole exists
+    const jobRole = await JobRole.findById(jobRoleId);
 
     if (!jobRole) {
-      return res.status(404).json({ message: "Job Role not found or access denied" });
+      return res.status(404).json({ message: "Job Role not found" });
+    }
+
+    if (!(await canModifyJobRole(req.user.id, jobRoleId))) {
+      return res.status(403).json({ message: "Forbidden: You do not have active access to modify this Job Role." });
+    }
+
+    // Build weightage history entry if weightage is given
+    const weightageHistory = [];
+    if (weightage !== undefined) {
+      weightageHistory.push({
+        value: weightage,
+        changedBy: req.user.id,
+        changedAt: new Date(),
+      });
     }
 
     // Create skill
@@ -64,6 +99,11 @@ exports.createSkill = async (req, res) => {
       requiredProficiency,
       jobRole: jobRoleId,
       createdBy: req.user.id,
+      priority: priority || "core",
+      isMandatory: isMandatory !== undefined ? isMandatory : true,
+      weightage: weightage !== undefined ? weightage : 0,
+      competencyArea: competencyArea || "General",
+      weightageHistory,
     });
 
     await newSkill.save();
@@ -87,14 +127,11 @@ exports.getSkillsByJobRole = async (req, res) => {
   try {
     const { jobRoleId } = req.params;
 
-    // Check if JobRole exists and belongs to admin
-    const jobRole = await JobRole.findOne({
-      _id: jobRoleId,
-      createdBy: req.user.id,
-    });
+    // Check if JobRole exists
+    const jobRole = await JobRole.findById(jobRoleId);
 
     if (!jobRole) {
-      return res.status(404).json({ message: "Job Role not found or access denied" });
+      return res.status(404).json({ message: "Job Role not found" });
     }
 
     // Fetch skills
@@ -118,7 +155,17 @@ exports.getSkillsByJobRole = async (req, res) => {
 exports.updateSkill = async (req, res) => {
   try {
     const { skillId } = req.params;
-    const { name, category, requiredProficiency, status } = req.body;
+    const {
+      name,
+      category,
+      requiredProficiency,
+      status,
+      // Phase 1 new fields
+      priority,
+      isMandatory,
+      weightage,
+      competencyArea,
+    } = req.body;
 
     // Find skill and ensure it belongs to an admin-owned job role
     const skill = await Skill.findById(skillId).populate("jobRole");
@@ -127,16 +174,45 @@ exports.updateSkill = async (req, res) => {
       return res.status(404).json({ message: "Skill not found" });
     }
 
-    // Check if admin owns the job role
-    if (skill.jobRole.createdBy.toString() !== req.user.id) {
-      return res.status(403).json({ message: "Forbidden: Cannot edit this skill" });
+    // Check if admin owns the job role or has temporary access
+    const jobRoleId = typeof skill.jobRole === 'object' ? skill.jobRole._id : skill.jobRole;
+    if (!(await canModifyJobRole(req.user.id, jobRoleId))) {
+      return res.status(403).json({ message: "Forbidden: You do not have active access to modify this Job Role." });
     }
 
-    // Update fields if provided
+    // Validate priority if given
+    const validPriorities = ["core", "secondary", "optional"];
+    if (priority && !validPriorities.includes(priority)) {
+      return res.status(400).json({
+        message: `priority must be one of: ${validPriorities.join(", ")}`
+      });
+    }
+
+    // Validate weightage range
+    if (weightage !== undefined && (weightage < 0 || weightage > 100)) {
+      return res.status(400).json({ message: "weightage must be between 0 and 100" });
+    }
+
+    // Update basic fields if provided
     if (name) skill.name = name;
     if (category) skill.category = category;
     if (requiredProficiency !== undefined) skill.requiredProficiency = requiredProficiency;
     if (status) skill.status = status;
+
+    // Update Phase 1 fields
+    if (priority) skill.priority = priority;
+    if (isMandatory !== undefined) skill.isMandatory = isMandatory;
+    if (competencyArea) skill.competencyArea = competencyArea;
+
+    // Append to weightage history if weightage changed
+    if (weightage !== undefined && weightage !== skill.weightage) {
+      skill.weightage = weightage;
+      skill.weightageHistory.push({
+        value: weightage,
+        changedBy: req.user.id,
+        changedAt: new Date(),
+      });
+    }
 
     await skill.save();
 
@@ -174,9 +250,10 @@ exports.setPrerequisites = async (req, res) => {
       });
     }
 
-    if (skill.jobRole.createdBy.toString() !== req.user.id) {
+    const jobRoleId = typeof skill.jobRole === 'object' ? skill.jobRole._id : skill.jobRole;
+    if (!(await canModifyJobRole(req.user.id, jobRoleId))) {
       return res.status(403).json({
-        message: "Forbidden: Cannot update this skill",
+        message: "Forbidden: You do not have active access to modify this Job Role.",
       });
     }
 
@@ -198,13 +275,6 @@ exports.setPrerequisites = async (req, res) => {
         message: "All prerequisite skills must belong to the same Job Role",
       });
     }
-
-    // Remove duplicate prerequisite IDs
-    // const uniquePrerequisites = [...new Set(prerequisiteIds)];
-
-    // // Set prerequisites
-    // skill.prerequisites = uniquePrerequisites;
-    // await skill.save();
 
     // Remove duplicate prerequisite IDs
 const uniquePrerequisites = [...new Set(prerequisiteIds)];
@@ -246,8 +316,9 @@ exports.getPrerequisiteData = async (req, res) => {
     }
 
     // ownership check
-    if (skill.jobRole.createdBy.toString() !== req.user.id) {
-      return res.status(403).json({ message: "Forbidden" });
+    const jobRoleId = typeof skill.jobRole === 'object' ? skill.jobRole._id : skill.jobRole;
+    if (!(await canModifyJobRole(req.user.id, jobRoleId))) {
+      return res.status(403).json({ message: "Forbidden: You do not have active access to modify this Job Role." });
     }
 
     // fetch all skills in same job role except itself
@@ -540,5 +611,42 @@ exports.startLearning = async (req, res) => {
     return res.status(403).json({ message: "No skills unlocked yet" });
   } catch (error) {
     res.status(500).json({ message: error.message });
+  }
+};
+
+// Admin: Delete a skill
+exports.deleteSkill = async (req, res) => {
+  try {
+    const { skillId } = req.params;
+
+    const skill = await Skill.findById(skillId).populate("jobRole");
+    if (!skill) {
+      return res.status(404).json({ message: "Skill not found" });
+    }
+
+    const jobRoleId = typeof skill.jobRole === 'object' ? skill.jobRole._id : skill.jobRole;
+    if (!(await canModifyJobRole(req.user.id, jobRoleId))) {
+      return res.status(403).json({
+        message: "Forbidden: You do not have active access to modify this Job Role.",
+      });
+    }
+
+    // Cleanup prerequisites: remove this skill ID from other skills' prerequisites array
+    await Skill.updateMany(
+      { "prerequisites.skill": skillId },
+      { $pull: { prerequisites: { skill: skillId } } }
+    );
+
+    // Delete skill
+    await Skill.findByIdAndDelete(skillId);
+
+    res.status(200).json({
+      message: "Skill deleted successfully",
+    });
+  } catch (error) {
+    res.status(500).json({
+      message: "Error deleting skill",
+      error: error.message,
+    });
   }
 };

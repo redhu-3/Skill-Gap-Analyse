@@ -18,10 +18,24 @@ exports.protect = (req, res, next) => {
   }
 };
 
-// Verify role
+// Verify a single role (legacy – kept for backward compatibility)
 exports.verifyRole = (role) => (req, res, next) => {
   if (!req.user) return res.status(401).json({ message: "Not authorized" });
   if (req.user.role !== role)
     return res.status(403).json({ message: "Forbidden: Access denied" });
+  next();
+};
+
+/**
+ * verifyRoles – accepts an array of allowed roles.
+ * Usage: verifyRoles(["admin", "manager"])
+ * Also treats the legacy "user" role as equivalent to "viewer".
+ */
+exports.verifyRoles = (roles) => (req, res, next) => {
+  if (!req.user) return res.status(401).json({ message: "Not authorized" });
+  // normalise legacy "user" → treated same as "viewer"
+  const effectiveRole = req.user.role === "user" ? "viewer" : req.user.role;
+  if (!roles.includes(effectiveRole) && !roles.includes(req.user.role))
+    return res.status(403).json({ message: "Forbidden: insufficient role" });
   next();
 };

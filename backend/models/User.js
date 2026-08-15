@@ -1,3 +1,51 @@
+// const mongoose = require("mongoose");
+// const bcrypt = require("bcryptjs");
+
+// const userSchema = new mongoose.Schema({
+//   name: { type: String, required: true },
+//   email: { type: String, required: true, unique: true },
+//   password: { type: String, required: true },
+//   role: {
+//     type: String,
+//     enum: ["admin", "manager", "contributor", "viewer", "user"],
+//     default: "user",
+//   },
+//   resetPasswordToken: String,
+//   resetPasswordExpires: Date,
+
+//     theme: {
+//     type: String,
+//     enum: ["light", "dark"],
+//     default: "light",
+//   },
+
+//   // 🎯 Career Path
+//   jobRole: {
+//     type: mongoose.Schema.Types.ObjectId,
+//     ref: "JobRole",
+//     default: null,
+//   },
+
+//   // 🧠 Skill Progress
+//   currentSkill: {
+//     type: mongoose.Schema.Types.ObjectId,
+//     ref: "Skill",
+//     default: null,
+//   },
+//    skillStatus: {
+//     type: String,
+//     enum: ["not_started", "in_progress", "weak", "completed"],
+//     default: "not_started",
+//   },
+// });
+
+// userSchema.pre("save", async function () {
+//   if (!this.isModified("password")) return;
+//   const salt = await bcrypt.genSalt(10);
+//   this.password = await bcrypt.hash(this.password, salt);
+// });
+
+// module.exports = mongoose.model("User", userSchema);
 const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
 
@@ -5,11 +53,15 @@ const userSchema = new mongoose.Schema({
   name: { type: String, required: true },
   email: { type: String, required: true, unique: true },
   password: { type: String, required: true },
-  role: { type: String, default: "user" },
+  role: {
+    type: String,
+    enum: ["admin", "manager", "contributor", "viewer", "user"],
+    default: "user", // ✅ Fixed: was "viewer", now "user" so JWT token carries correct role
+  },
   resetPasswordToken: String,
   resetPasswordExpires: Date,
 
-    theme: {
+  theme: {
     type: String,
     enum: ["light", "dark"],
     default: "light",
@@ -28,7 +80,7 @@ const userSchema = new mongoose.Schema({
     ref: "Skill",
     default: null,
   },
-   skillStatus: {
+  skillStatus: {
     type: String,
     enum: ["not_started", "in_progress", "weak", "completed"],
     default: "not_started",

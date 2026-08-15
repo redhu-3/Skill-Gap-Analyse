@@ -66,6 +66,9 @@ useEffect(() => {
 
       localStorage.setItem("token", res.data.token);
       localStorage.setItem("role", role);
+      if (role === "admin") {
+        localStorage.setItem("adminToken", res.data.token);
+      }
 
       navigate(role === "admin" ? "/admin/dashboard" : "/user/dashboard");
     } catch (err) {

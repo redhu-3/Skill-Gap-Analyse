@@ -1,1 +1,122 @@
 @import "tailwindcss";
+
+@theme {
+  --font-sans: "Manrope", ui-sans-serif, system-ui, sans-serif;
+  --font-heading: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+
+  /* Admin Semantic Theme Tokens */
+  --color-admin-bg: var(--admin-bg);
+  --color-admin-bg-secondary: var(--admin-bg-secondary);
+  --color-admin-surface: var(--admin-surface);
+  --color-admin-surface-elevated: var(--admin-surface-elevated);
+  --color-admin-surface-floating: var(--admin-surface-floating);
+  
+  --color-admin-border: var(--admin-border);
+  --color-admin-border-hover: var(--admin-border-hover);
+  
+  --color-admin-text: var(--admin-text);
+  --color-admin-text-muted: var(--admin-text-muted);
+  
+  --color-admin-primary: var(--admin-primary);
+  --color-admin-primary-hover: var(--admin-primary-hover);
+  --color-admin-primary-light: var(--admin-primary-light);
+  
+  --color-admin-secondary: var(--admin-secondary);
+  --color-admin-secondary-light: var(--admin-secondary-light);
+  
+  --color-admin-success: var(--admin-success);
+  --color-admin-success-light: var(--admin-success-light);
+  
+  --color-admin-warning: var(--admin-warning);
+  --color-admin-warning-light: var(--admin-warning-light);
+  
+  --color-admin-danger: var(--admin-danger);
+  --color-admin-danger-light: var(--admin-danger-light);
+  
+  --color-admin-glow: var(--admin-glow);
+}
+
+@layer base {
+  :root {
+    /* LIGHT MODE (Elegant, Editorial, Warm, Intelligent) */
+    --admin-bg: #F7F5F0;             /* Warm Ivory Base */
+    --admin-bg-secondary: #F1EDE4;   /* Soft Champagne */
+    
+    --admin-surface: #FFFCF7;        /* Warm White Surface */
+    --admin-surface-elevated: #F8F3EA; /* Slightly Warmer Ivory */
+    --admin-surface-floating: #FFFFFF;
+    
+    --admin-border: rgba(84, 44, 75, 0.1);  /* subtle plum-tinted borders */
+    --admin-border-hover: rgba(84, 44, 75, 0.25);
+    
+    --admin-text: #29242A;           /* Deep Plum-tinted Graphite */
+    --admin-text-muted: #746D73;     /* Muted secondary text */
+    
+    /* Accents */
+    --admin-primary: #542C4B;        /* Deep Plum */
+    --admin-primary-hover: #6B385D;   /* Plum */
+    --admin-primary-light: rgba(84, 44, 75, 0.08);
+    
+    --admin-secondary: #B85C6E;      /* Dusty Rose */
+    --admin-secondary-light: rgba(184, 92, 110, 0.08);
+    
+    --admin-success: #3F7D5A;        /* Muted Emerald */
+    --admin-success-light: rgba(63, 125, 90, 0.1);
+    
+    --admin-warning: #C89B4A;        /* Warm Gold */
+    --admin-warning-light: rgba(200, 155, 74, 0.1);
+    
+    --admin-danger: #B84A55;         /* Soft Coral Red */
+    --admin-danger-light: rgba(184, 74, 85, 0.1);
+    
+    --admin-glow: rgba(84, 44, 75, 0.15); /* Soft Plum Glow */
+  }
+
+  .dark {
+    /* DARK MODE (Cinematic, Technical, Immersive, Premium) */
+    --admin-bg: #080A0F;             /* Deep Graphite Base */
+    --admin-bg-secondary: #0D1118;   /* Secondary Dark */
+    
+    --admin-surface: #121822;        /* Main Surface */
+    --admin-surface-elevated: #18202B; /* Elevated Surface */
+    --admin-surface-floating: #202A36; /* Floating Surface (Modals/Drawers) */
+    
+    --admin-border: rgba(255, 255, 255, 0.08); /* Low-opacity cool gray */
+    --admin-border-hover: rgba(255, 255, 255, 0.15);
+    
+    --admin-text: rgba(255, 255, 255, 0.95);  /* Soft white, not pure white */
+    --admin-text-muted: rgba(255, 255, 255, 0.55);
+    
+    /* Accents */
+    --admin-primary: #8B5CF6;        /* Electric Violet */
+    --admin-primary-hover: #A78BFA; 
+    --admin-primary-light: rgba(139, 92, 246, 0.15);
+    
+    --admin-secondary: #22D3EE;      /* Cyan / Aqua */
+    --admin-secondary-light: rgba(34, 211, 238, 0.15);
+    
+    --admin-success: #34D399;        /* Emerald */
+    --admin-success-light: rgba(52, 211, 153, 0.15);
+    
+    --admin-warning: #F59E0B;        /* Amber */
+    --admin-warning-light: rgba(245, 158, 11, 0.15);
+    
+    --admin-danger: #FB7185;         /* Coral */
+    --admin-danger-light: rgba(251, 113, 133, 0.15);
+    
+    --admin-glow: rgba(139, 92, 246, 0.25); /* Electric Violet Glow */
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-heading);
+  }
+}
+
+/* Hide scrollbar for clean UI where needed */
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}

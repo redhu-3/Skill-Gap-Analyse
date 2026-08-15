@@ -16,6 +16,9 @@ const OAuthSuccess = () => {
 
     localStorage.setItem("token", token);
     localStorage.setItem("role", role);
+    if (role === "admin") {
+      localStorage.setItem("adminToken", token);
+    }
 
     if (role === "admin") {
       navigate("/admin/dashboard");

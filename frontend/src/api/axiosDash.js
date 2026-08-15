@@ -16,7 +16,8 @@
 import axios from "axios";
 
 const axiosDash = axios.create({
-  baseURL: "https://skill-gap-analyse.onrender.com/api/job-roles",
+  //baseURL: "https://skill-gap-analyse.onrender.com/api/job-roles",
+   baseURL: "http://localhost:5000/api/job-roles",
   headers: {
     "Content-Type": "application/json",
   },
